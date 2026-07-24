@@ -40,6 +40,13 @@ CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
 # Monate, für die wir Preise abfragen (Hinflug in diesem Monat)
 MONTHS_TO_CHECK = ["2027-02-01", "2027-03-01"]
 
+# Sanity-Check: naher Zeitraum, um zu bestätigen, dass die API-Anbindung
+# grundsätzlich funktioniert (dort sollten eher Cache-Daten vorhanden sein).
+# Kann später wieder entfernt werden, sobald die Anbindung bestätigt ist.
+SANITY_CHECK_MONTH = "2026-09-01"
+if SANITY_CHECK_MONTH not in MONTHS_TO_CHECK:
+    MONTHS_TO_CHECK = [SANITY_CHECK_MONTH] + MONTHS_TO_CHECK
+
 
 def get_token():
     token = os.environ.get("TRAVELPAYOUTS_TOKEN")
@@ -49,20 +56,21 @@ def get_token():
     return token
 
 
-def search_prices(token, beginning_of_period):
+def search_prices(token, beginning_of_period, restrict_duration=True):
     params = {
         "origin": ORIGIN,
         "destination": DESTINATION,
         "currency": CURRENCY,
         "period_type": "month",
         "beginning_of_period": beginning_of_period,
-        "trip_duration_min": TRIP_DURATION_MIN,
-        "trip_duration_max": TRIP_DURATION_MAX,
         "one_way": "false",
         "sorting": "price",
         "limit": 30,
         "page": 1,
     }
+    if restrict_duration:
+        params["trip_duration_min"] = TRIP_DURATION_MIN
+        params["trip_duration_max"] = TRIP_DURATION_MAX
     headers = {"X-Access-Token": token}
     resp = requests.get(API_URL, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
@@ -101,11 +109,18 @@ def main():
 
     zeilen = []
     for monat in MONTHS_TO_CHECK:
-        print(f"Suche Preise für Hinflüge ab {monat} ...")
-        treffer = search_prices(token, monat)
+        ist_sanity_check = monat == SANITY_CHECK_MONTH
+        label = " (SANITY-CHECK, kein Dauer-Filter)" if ist_sanity_check else ""
+        print(f"Suche Preise für Hinflüge ab {monat}{label} ...")
+        treffer = search_prices(token, monat, restrict_duration=not ist_sanity_check)
         if not treffer:
             print("  Keine Treffer (evtl. noch keine Cache-Daten für diesen Zeitraum).")
             continue
+        hinweis = (
+            "SANITY-CHECK: bestätigt nur, dass die API-Anbindung funktioniert"
+            if ist_sanity_check
+            else "Cache-Preis, Economy, Direktflug nicht garantiert"
+        )
         for eintrag in treffer:
             zeilen.append(
                 [
@@ -116,7 +131,7 @@ def main():
                     eintrag.get("value", ""),
                     eintrag.get("gate", ""),
                     eintrag.get("number_of_changes", ""),
-                    "Cache-Preis, Economy, Direktflug nicht garantiert",
+                    hinweis,
                 ]
             )
             print(
