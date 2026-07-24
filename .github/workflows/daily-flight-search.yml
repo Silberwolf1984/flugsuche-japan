@@ -34,10 +34,10 @@ jobs:
         run: python flugsuche.py
 
       - name: Ergebnisse committen
-        run: |
-          git config user.name "flugsuche-bot"
-          git config user.email "actions@github.com"
-          git add data/preise.csv
-          git diff --quiet --cached || git commit -m "Preise vom $(date +'%Y-%m-%d')"
-          git pull --rebase origin main
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Preise vom ${{ github.run_id }}"
+          commit_user_name: flugsuche-bot
+          commit_user_email: actions@github.com
+          file_pattern: data/preise.csv
+          skip_dirty_check: false
