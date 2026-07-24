@@ -1,6 +1,4 @@
 """
-csv_store.py
-
 Speichert und lädt Flüge als CSV-Datei.
 """
 
@@ -10,7 +8,6 @@ import csv
 from pathlib import Path
 
 from models import Flight
-
 from config import CSV_PATH
 
 
@@ -39,7 +36,6 @@ def write_header() -> None:
     """
 
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as file:
-
         writer = csv.writer(file)
         writer.writerow(CSV_HEADER)
 
@@ -53,7 +49,6 @@ def append_flight(flight: Flight) -> None:
         write_header()
 
     with open(CSV_PATH, "a", newline="", encoding="utf-8") as file:
-
         writer = csv.writer(file)
 
         writer.writerow(
@@ -82,9 +77,7 @@ def load_history() -> list[dict]:
         return []
 
     with open(CSV_PATH, newline="", encoding="utf-8") as file:
-
         reader = csv.DictReader(file)
-
         return list(reader)
 
 
@@ -92,20 +85,38 @@ def last_price(origin: str) -> int | None:
     """
     Liefert den zuletzt gespeicherten Preis
     für einen Abflughafen.
-
-    Beispiel:
-        last_price("FRA")
     """
 
     history = load_history()
 
     for row in reversed(history):
-
         if row["origin"] == origin:
-
             try:
                 return int(row["price"])
             except ValueError:
                 return None
 
     return None
+
+
+def best_price(origin: str) -> int | None:
+    """
+    Liefert den bisher günstigsten Preis
+    für einen Abflughafen.
+    """
+
+    history = load_history()
+
+    prices = []
+
+    for row in history:
+        if row["origin"] == origin:
+            try:
+                prices.append(int(row["price"]))
+            except ValueError:
+                pass
+
+    if not prices:
+        return None
+
+    return min(prices)
