@@ -18,11 +18,14 @@ def main() -> int:
     Einstiegspunkt des Programms.
     """
 
-    token = os.getenv("TP_API_TOKEN")
+token = (
+    os.getenv("TRAVELPAYOUTS_TOKEN")
+    or os.getenv("TP_API_TOKEN")
+)
 
-    if not token:
-        print("❌ Umgebungsvariable TP_API_TOKEN nicht gesetzt.")
-        return 1
+if not token:
+    print("❌ Kein TravelPayouts API-Token gefunden.")
+    return 1
 
     print("🔍 Suche nach Flügen...")
 
