@@ -45,7 +45,14 @@ STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
 
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
 
-PREFERRED_AIRLINES = ["LH", "NH", "JL", "AY", "KL", "AF", "EK", "QR", "EY", "TK"]
+PREFERRED_AIRLINES = ["NH","JL","LH","AY","KL","AF","QR","EK","EY","TK"]
+AIRLINE_SCORE={"NH":100,"JL":100,"LH":95,"AY":90,"KL":85,"AF":84,"QR":82,"EK":81,"EY":80,"TK":75}
+
+def flight_score(stop_key, airline, price):
+    score=10000 if stop_key=="0" else 0
+    score+=AIRLINE_SCORE.get(airline,0)*100
+    score-=int(price or 999999)
+    return score
 EXCLUDED_AIRLINES = {"CA", "CZ", "MU", "MF", "HU", "3U", "9C", "HO", "GS", "SC", "ZH"}
 
 
@@ -151,6 +158,7 @@ def main():
     heute = date.today().isoformat()
 
     zeilen = []
+    beste_fluege = {}
     for origin in ORIGINS:
         print(f"\n===== {origin} -> {DESTINATION} =====")
         for depart_month, return_month in MONTH_COMBINATIONS:
@@ -179,7 +187,7 @@ def main():
                     print(f"  Übersprungen: Reisedauer {dauer} Tage weicht zu stark von {STAY_DAYS_TARGET} Tagen ab.")
                     continue
 
-                zeilen.append([
+                kandidat=[
                     heute,
                     origin,
                     DESTINATION,
@@ -191,7 +199,10 @@ def main():
                     stops_label(stop_key),
                     eintrag.get("expires_at", ""),
                     "Preis pro Person, Cache-Preis (kein Live-Tarif)",
-                ])
+                ]
+                score=flight_score(stop_key, airline, eintrag.get("price",999999))
+                if origin not in beste_fluege or score>beste_fluege[origin]["score"]:
+                    beste_fluege[origin]={"score":score,"row":kandidat,"airline":airline,"price":eintrag.get("price"),"direct":stop_key=="0"}
 
                 print(
                     f"  {origin}: {eintrag.get('departure_at')} -> {eintrag.get('return_at')} "
@@ -200,6 +211,9 @@ def main():
                 )
 
 
+    zeilen=[v['row'] for v in beste_fluege.values()]
+    for origin,flug in beste_fluege.items():
+        print(f"\n🏆 Bester Flug {origin}: {flug['airline']} | {flug['price']} EUR | {'Direktflug' if flug['direct'] else 'Umstieg'}")
     if zeilen:
         with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
