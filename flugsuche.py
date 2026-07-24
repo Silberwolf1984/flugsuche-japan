@@ -42,7 +42,12 @@ DESTINATION = "TYO"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
 STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
+
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
+
+PREFERRED_AIRLINES = ["LH", "NH", "JL", "AY", "KL", "AF", "EK", "QR", "EY", "TK"]
+EXCLUDED_AIRLINES = {"CA", "CZ", "MU", "MF", "HU", "3U", "9C", "HO", "GS", "SC", "ZH"}
+
 
 # Monatskombinationen: (Abflugmonat, Rückflugmonat)
 MONTH_COMBINATIONS = [
@@ -156,9 +161,18 @@ def main():
                 continue
 
             for stop_key, eintrag in daten.items():
-                if stop_key != "0":
-                    print(f"  Übersprungen: {stops_label(stop_key)}")
+                airline = eintrag.get("airline", "")
+
+                if airline in EXCLUDED_AIRLINES:
+                    print(f"  Übersprungen: ausgeschlossene Airline {airline}")
                     continue
+
+                if stop_key != "0":
+                    if airline in PREFERRED_AIRLINES:
+                        print(f"  Kein Direktflug vorhanden – akzeptiere bevorzugte Airline {airline} mit {stops_label(stop_key)}.")
+                    else:
+                        print(f"  Übersprungen: {airline} ({stops_label(stop_key)})")
+                        continue
 
                 dauer = trip_duration_days(eintrag)
                 if dauer is not None and abs(dauer - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
