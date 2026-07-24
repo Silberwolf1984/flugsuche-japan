@@ -37,20 +37,12 @@ from datetime import date, datetime
 import requests
 
 API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
-BUSINESS_API_URL = "https://api.travelpayouts.com/v2/prices/latest"
 ORIGINS = ["FRA", "MUC", "DUS"]
 DESTINATION = "HND"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
 STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
-
-# Business Class: eigener, optionaler Suchdurchlauf. Nutzt zwangsläufig
-# "/v2/prices/latest" (einziger Endpunkt mit trip_class-Parameter), der
-# nur Preise aus Nutzersuchen der letzten 48 Stunden zeigt - bei Business
-# Class + Nischenroute ist die Trefferwahrscheinlichkeit gering, schadet
-# aber nicht, es trotzdem regelmäßig zu versuchen.
-BUSINESS_MONTHS = ["2027-02-01", "2027-03-01"]
 
 # Monatskombinationen: (Abflugmonat, Rückflugmonat)
 MONTH_COMBINATIONS = [
@@ -111,29 +103,6 @@ def trip_duration_days(eintrag):
         return None
 
 
-def search_business_prices(token, origin, beginning_of_period):
-    params = {
-        "origin": origin,
-        "destination": DESTINATION,
-        "currency": CURRENCY,
-        "period_type": "month",
-        "beginning_of_period": beginning_of_period,
-        "trip_class": 1,  # 1 = Business Class
-        "one_way": "false",
-        "sorting": "price",
-        "limit": 30,
-        "page": 1,
-    }
-    headers = {"x-access-token": token}
-    resp = requests.get(BUSINESS_API_URL, params=params, headers=headers, timeout=30)
-    if resp.status_code != 200:
-        print(f"  Warnung: HTTP {resp.status_code} für {beginning_of_period}: {resp.text[:200]}")
-        return []
-    payload = resp.json()
-    if not payload.get("success", True):
-        print(f"  API meldet Fehler: {payload}")
-        return []
-    return payload.get("data", [])
 
 
 def ensure_csv_header():
@@ -164,9 +133,8 @@ def diagnose_api(token):
     Schreibt NICHTS in die CSV, nur Log-Ausgabe."""
     print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, /v1/prices/cheap ---")
     dep_m, ret_m = SANITY_CHECK_MONTH
-    for origin in SANITY_CHECK_ORIGINS:
-        daten = search_prices(token, origin, SANITY_CHECK_DESTINATION, dep_m, ret_m)
-        print(f"  {origin} -> Rohdaten: {daten}")
+    daten = search_prices(token, SANITY_CHECK_ORIGIN, SANITY_CHECK_DESTINATION, dep_m, ret_m)
+    print(f"  Rohdaten: {daten}")
     print("--- ENDE DIAGNOSE-TEST ---\n")
 
 
@@ -212,38 +180,6 @@ def main():
                     f"{eintrag.get('airline')}, {stops_label(stop_key)}"
                 )
 
-    # --- Zusätzlicher, optionaler Durchlauf: Business Class ---
-
-    # Eigener Endpunkt mit anderem Cache-Verhalten (nur letzte 48h),
-    # daher bewusst getrennt von der Economy-Hauptsuche oben.
-    for origin in ORIGINS:
-        for monat in BUSINESS_MONTHS:
-            print(f"Suche Business-Class-Preise für Hinflüge ab {monat} ...")
-            treffer = search_business_prices(token, origin, monat)
-            if not treffer:
-                print("  Keine Treffer (Business Class + Nischenroute -> selten Cache-Daten vorhanden).")
-                continue
-
-            for eintrag in treffer:
-                zeilen.append([
-                    heute,
-                    origin,
-                    DESTINATION,
-                    eintrag.get("depart_date", ""),
-                    eintrag.get("return_date", ""),
-                    eintrag.get("duration", ""),
-                    eintrag.get("value", ""),
-                    eintrag.get("gate", ""),
-                    "Business Class",
-                    "",
-                    "BUSINESS CLASS - Cache nur letzte 48h, Direktflug nicht garantiert",
-                ])
-
-                print(
-                    f"  BUSINESS CLASS {origin}: "
-                    f"{eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
-                    f"{eintrag.get('value')} {CURRENCY.upper()} pro Person ({eintrag.get('gate')})"
-                )
 
     if zeilen:
         with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
