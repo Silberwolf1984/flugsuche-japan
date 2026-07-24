@@ -1,124 +1,42 @@
 """
-Bewertung und Vergleich von Flügen.
-
-Diese Datei enthält ausschließlich Logik zur Auswahl des besten Fluges.
-Sie kennt weder die API noch CSV-Dateien.
+Bewertung von Flügen.
 """
 
-from datetime import datetime
-
-from config import AIRLINE_PRIORITY
+from config import AIRLINE_PRIORITY, STAY_DAYS_TARGET
+from models import Flight
 
 
 def airline_priority(airline: str) -> int:
     """
-    Liefert die Priorität einer Airline.
-
-    Höhere Werte bedeuten eine höhere Bevorzugung.
-    Unbekannte Airlines erhalten 0 Punkte.
+    Priorität einer Airline.
     """
     return AIRLINE_PRIORITY.get(airline, 0)
 
 
-def is_direct_flight(stop_key: str) -> bool:
+def duration_difference(flight: Flight) -> int:
     """
-    True, wenn es sich um einen Direktflug handelt.
+    Abweichung vom gewünschten Aufenthalt.
     """
-    return stop_key == "0"
+    return abs(flight.duration - STAY_DAYS_TARGET)
 
 
-def departure_timestamp(flight: dict) -> float:
+def flight_sort_key(flight: Flight):
     """
-    Zeitstempel des Hinfluges.
+    Vergleichsschlüssel.
 
-    Wird genutzt, um bei identischen Flügen den früheren
-    Abflug zu bevorzugen.
-    """
-    try:
-        dep = flight["departure_at"].replace("Z", "+00:00")
-        return datetime.fromisoformat(dep).timestamp()
-    except Exception:
-        return float("inf")
+    Reihenfolge:
 
-
-def trip_duration(flight: dict) -> int:
-    """
-    Aufenthaltsdauer in Tagen.
-
-    Falls keine Berechnung möglich ist,
-    wird eine sehr große Zahl zurückgegeben.
-    """
-    try:
-        dep = datetime.fromisoformat(
-            flight["departure_at"].replace("Z", "+00:00")
-        )
-        ret = datetime.fromisoformat(
-            flight["return_at"].replace("Z", "+00:00")
-        )
-
-        return (ret - dep).days
-
-    except Exception:
-        return 999
-
-
-def flight_sort_key(stop_key: str, flight: dict):
-    """
-    Erstellt einen Vergleichsschlüssel.
-
-    Reihenfolge der Bewertung:
-
-        1. Direktflug
-        2. Airline
-        3. Preis
-        4. Aufenthaltsdauer
-        5. früherer Hinflug
-
-    Kann direkt mit
-
-        max(..., key=flight_sort_key)
-
-    verwendet werden.
-    """
-
-    airline = flight.get("airline", "")
-    price = int(flight.get("price", 999999))
-
-    return (
-
-        # Direktflug gewinnt immer
-        is_direct_flight(stop_key),
-
-        # Airline-Ranking
-        airline_priority(airline),
-
-        # günstiger gewinnt
-        -price,
-
-        # kürzere Abweichung gewinnt
-        -trip_duration(flight),
-
-        # früherer Flug gewinnt
-        -departure_timestamp(flight),
-    )
-
-
-def better_flight(
-    current_stop_key: str,
-    current_flight: dict,
-    best_stop_key: str,
-    best_flight: dict,
-) -> bool:
-    """
-    Vergleicht zwei Flüge.
-
-    True bedeutet:
-
-        current_flight ist besser als best_flight.
+    1 Direktflug
+    2 Airline
+    3 Preis
+    4 Aufenthaltsdauer
+    5 früherer Hinflug
     """
 
     return (
-        flight_sort_key(current_stop_key, current_flight)
-        >
-        flight_sort_key(best_stop_key, best_flight)
+        flight.is_direct,
+        airline_priority(flight.airline),
+        -flight.price,
+        -duration_difference(flight),
+        -flight.departure.timestamp(),
     )
