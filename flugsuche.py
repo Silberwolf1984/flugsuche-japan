@@ -177,8 +177,7 @@ def main():
 
     zeilen = []
     for origin in ORIGINS:
-        print(f"
-===== {origin} -> {DESTINATION} =====")
+        print(f"\n===== {origin} -> {DESTINATION} =====")
         for depart_month, return_month in MONTH_COMBINATIONS:
             print(f"Suche Preise: Hinflug {depart_month}, Rückflug {return_month} ...")
             daten = search_prices(token, origin, DESTINATION, depart_month, return_month)
