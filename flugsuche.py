@@ -1,122 +1,78 @@
 """
-Tägliche Preissuche für Direktflüge Frankfurt (FRA) -> Tokyo Haneda (HND)
-für 2 Personen, Economy & Premium Economy, verschiedene Datumskombinationen
-im Feb/März 2027 mit ca. 23 Tagen Aufenthalt.
+Tägliche Preissuche für Flüge Frankfurt (FRA) -> Tokyo Haneda (HND)
+für den Zeitraum Feb/März 2027 mit ca. 23 Tagen Aufenthalt.
 
-Nutzt die Amadeus Self-Service "Flight Offers Search" API (Testumgebung,
-kostenloses Kontingent).
+Nutzt die Travelpayouts (Aviasales) Data API - "Latest Prices"-Endpunkt.
+Das ist eine kostenlose, cache-basierte API (keine Live-Shopping-Abfrage):
+Sie zeigt Preise, die aus echten Nutzersuchen bei Aviasales stammen.
 
-Benötigt zwei Umgebungsvariablen:
-  AMADEUS_CLIENT_ID
-  AMADEUS_CLIENT_SECRET
+WICHTIGE EINSCHRÄNKUNGEN (bitte im Hinterkopf behalten):
+- Für weit in der Zukunft liegende Reisen (hier: 7+ Monate) kann die
+  Trefferquote anfangs gering sein, da wenige Nutzer so früh suchen.
+- Die API liefert praktisch nur Economy-Preise, keine separate
+  Premium-Economy-Angabe.
+- Es lässt sich kein exaktes Abflugdatum abfragen, nur ein Zeitraum
+  (Monat) + eine gewünschte Reisedauer.
+- Die Preise sind Cache-Preise, keine garantiert buchbaren Live-Tarife.
+- Die API liefert keine Info, ob es sich um einen Direktflug handelt
+  (kein "nonStop"-Filter) - das Skript kennzeichnet das entsprechend.
 
-Schreibt/erweitert eine CSV-Datei unter data/preise.csv mit allen Treffern.
+Benötigt eine Umgebungsvariable:
+  TRAVELPAYOUTS_TOKEN
+
+Schreibt/erweitert eine CSV-Datei unter data/preise.csv.
 """
 
 import os
 import csv
 import sys
-from datetime import date, timedelta
+from datetime import date
 import requests
 
-AMADEUS_BASE_URL = "https://test.api.amadeus.com"
+API_URL = "https://api.travelpayouts.com/v2/prices/latest"
 ORIGIN = "FRA"
 DESTINATION = "HND"
-ADULTS = 2
-STAY_DAYS = 23
+CURRENCY = "eur"
+TRIP_DURATION_MIN = 20
+TRIP_DURATION_MAX = 26
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
 
-# Kandidaten für Hinflug-Daten: alle 5 Tage vom 01.02.2027 bis 10.03.2027.
-# Rückflug = Hinflug + 23 Tage. Passe die Werte hier an, falls du engere
-# oder weitere Zeitfenster testen willst.
-START = date(2027, 2, 1)
-END = date(2027, 3, 10)
-STEP_DAYS = 5
-
-TRAVEL_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY"]
+# Monate, für die wir Preise abfragen (Hinflug in diesem Monat)
+MONTHS_TO_CHECK = ["2027-02-01", "2027-03-01"]
 
 
-def get_departure_dates():
-    dates = []
-    d = START
-    while d <= END:
-        dates.append(d)
-        d += timedelta(days=STEP_DAYS)
-    return dates
-
-
-def get_access_token():
-    client_id = os.environ.get("AMADEUS_CLIENT_ID")
-    client_secret = os.environ.get("AMADEUS_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        print("FEHLER: AMADEUS_CLIENT_ID / AMADEUS_CLIENT_SECRET nicht gesetzt.")
+def get_token():
+    token = os.environ.get("TRAVELPAYOUTS_TOKEN")
+    if not token:
+        print("FEHLER: TRAVELPAYOUTS_TOKEN nicht gesetzt.")
         sys.exit(1)
-
-    resp = requests.post(
-        f"{AMADEUS_BASE_URL}/v1/security/oauth2/token",
-        data={
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
+    return token
 
 
-def search_flights(token, departure_date, return_date, travel_class):
+def search_prices(token, beginning_of_period):
     params = {
-        "originLocationCode": ORIGIN,
-        "destinationLocationCode": DESTINATION,
-        "departureDate": departure_date.isoformat(),
-        "returnDate": return_date.isoformat(),
-        "adults": ADULTS,
-        "travelClass": travel_class,
-        "nonStop": "true",
-        "currencyCode": "EUR",
-        "max": 5,
+        "origin": ORIGIN,
+        "destination": DESTINATION,
+        "currency": CURRENCY,
+        "period_type": "month",
+        "beginning_of_period": beginning_of_period,
+        "trip_duration_min": TRIP_DURATION_MIN,
+        "trip_duration_max": TRIP_DURATION_MAX,
+        "one_way": "false",
+        "sorting": "price",
+        "limit": 30,
+        "page": 1,
     }
-    headers = {"Authorization": f"Bearer {token}"}
-    resp = requests.get(
-        f"{AMADEUS_BASE_URL}/v2/shopping/flight-offers",
-        params=params,
-        headers=headers,
-        timeout=30,
-    )
+    headers = {"X-Access-Token": token}
+    resp = requests.get(API_URL, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
-        print(f"  Warnung: {resp.status_code} für {departure_date} {travel_class}: {resp.text[:200]}")
+        print(f"  Warnung: {resp.status_code} für {beginning_of_period}: {resp.text[:200]}")
         return []
-    return resp.json().get("data", [])
-
-
-def extract_offers(offers, travel_class):
-    """Nur Angebote behalten, deren tatsächliche Kabine passt, und die
-    wichtigsten Felder herausziehen."""
-    results = []
-    for offer in offers:
-        try:
-            price = offer["price"]["total"]
-            currency = offer["price"]["currency"]
-            traveler_pricing = offer["travelerPricings"][0]
-            cabin = traveler_pricing["fareDetailsBySegment"][0]["cabin"]
-            if cabin != travel_class:
-                continue
-            carriers = set()
-            for itinerary in offer["itineraries"]:
-                for segment in itinerary["segments"]:
-                    carriers.add(segment["carrierCode"])
-            results.append(
-                {
-                    "price_total": price,
-                    "currency": currency,
-                    "cabin": cabin,
-                    "airlines": "+".join(sorted(carriers)),
-                }
-            )
-        except (KeyError, IndexError):
-            continue
-    return results
+    payload = resp.json()
+    if not payload.get("success", True):
+        print(f"  API meldet Fehler: {payload}")
+        return []
+    return payload.get("data", [])
 
 
 def ensure_csv_header():
@@ -129,43 +85,44 @@ def ensure_csv_header():
                     "abfrage_datum",
                     "hinflug",
                     "rueckflug",
-                    "klasse",
-                    "preis_gesamt_eur",
+                    "reisedauer_tage",
                     "preis_pro_person_eur",
-                    "airlines",
+                    "airline",
+                    "anzahl_zwischenstopps",
+                    "hinweis",
                 ]
             )
 
 
 def main():
     ensure_csv_header()
-    token = get_access_token()
+    token = get_token()
     heute = date.today().isoformat()
 
     zeilen = []
-    for departure_date in get_departure_dates():
-        return_date = departure_date + timedelta(days=STAY_DAYS)
-        for travel_class in TRAVEL_CLASSES:
-            print(f"Suche: {departure_date} -> {return_date} ({travel_class})")
-            offers = search_flights(token, departure_date, return_date, travel_class)
-            treffer = extract_offers(offers, travel_class)
-            if not treffer:
-                print("  Keine passenden Direktflug-Angebote gefunden.")
-                continue
-            bester = min(treffer, key=lambda x: float(x["price_total"]))
-            preis_pp = round(float(bester["price_total"]) / ADULTS, 2)
-            print(f"  Günstigstes Angebot: {bester['price_total']} {bester['currency']} "
-                  f"gesamt ({preis_pp} pro Person, {bester['airlines']})")
+    for monat in MONTHS_TO_CHECK:
+        print(f"Suche Preise für Hinflüge ab {monat} ...")
+        treffer = search_prices(token, monat)
+        if not treffer:
+            print("  Keine Treffer (evtl. noch keine Cache-Daten für diesen Zeitraum).")
+            continue
+        for eintrag in treffer:
             zeilen.append(
                 [
                     heute,
-                    departure_date.isoformat(),
-                    return_date.isoformat(),
-                    travel_class,
-                    bester["price_total"],
-                    preis_pp,
-                    bester["airlines"],
+                    eintrag.get("depart_date", ""),
+                    eintrag.get("return_date", ""),
+                    eintrag.get("duration", ""),
+                    eintrag.get("value", ""),
+                    eintrag.get("gate", ""),
+                    eintrag.get("number_of_changes", ""),
+                    "Cache-Preis, Economy, Direktflug nicht garantiert",
                 ]
+            )
+            print(
+                f"  {eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
+                f"{eintrag.get('value')} EUR (pro Person, Cache-Preis, "
+                f"{eintrag.get('number_of_changes', '?')} Zwischenstopp(s))"
             )
 
     if zeilen:
@@ -174,7 +131,8 @@ def main():
             writer.writerows(zeilen)
         print(f"\n{len(zeilen)} neue Zeile(n) in {CSV_PATH} gespeichert.")
     else:
-        print("\nKeine neuen Ergebnisse heute.")
+        print("\nKeine neuen Ergebnisse heute - das ist bei so weit in der Zukunft "
+              "liegenden Daten normal und kann sich in den kommenden Wochen ändern.")
 
 
 if __name__ == "__main__":
