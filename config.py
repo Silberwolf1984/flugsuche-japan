@@ -29,7 +29,7 @@ DESTINATION = "TYO"
 
 # Gewünschte Aufenthaltsdauer
 STAY_DAYS_TARGET = 23
-STAY_DAYS_TOLERANCE = 4
+STAY_DAYS_TOLERANCE = 3
 
 # Suchzeiträume
 MONTH_COMBINATIONS = [
