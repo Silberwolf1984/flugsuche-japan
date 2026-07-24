@@ -2,20 +2,27 @@
 Tägliche Preissuche für Flüge Frankfurt (FRA) -> Tokyo Haneda (HND)
 für den Zeitraum Feb/März 2027 mit ca. 23 Tagen Aufenthalt.
 
-Nutzt die Travelpayouts (Aviasales) Data API - "Latest Prices"-Endpunkt.
-Das ist eine kostenlose, cache-basierte API (keine Live-Shopping-Abfrage):
-Sie zeigt Preise, die aus echten Nutzersuchen bei Aviasales stammen.
+Nutzt die Travelpayouts (Aviasales) Data API - Endpunkt "/v1/prices/cheap".
+Das ist eine kostenlose, cache-basierte API (keine Live-Shopping-Abfrage).
+
+Wichtig zur Endpunkt-Wahl: "/v2/prices/latest" zeigt nur Preise aus
+Nutzersuchen der letzten 48 Stunden - für eine selten gesuchte Strecke wie
+FRA-HND praktisch nie brauchbar. "/v1/prices/cheap" hat einen breiteren
+Cache-Horizont und liefert die Ergebnisse zusätzlich gruppiert nach Anzahl
+Zwischenstopps (Schlüssel "0" = Direktflug, "1" = 1 Stopp, usw.) - das
+nutzen wir, um gezielt nur Direktflüge herauszufiltern.
 
 WICHTIGE EINSCHRÄNKUNGEN (bitte im Hinterkopf behalten):
 - Für weit in der Zukunft liegende Reisen (hier: 7+ Monate) kann die
   Trefferquote anfangs gering sein, da wenige Nutzer so früh suchen.
 - Die API liefert praktisch nur Economy-Preise, keine separate
   Premium-Economy-Angabe.
-- Es lässt sich kein exaktes Abflugdatum abfragen, nur ein Zeitraum
-  (Monat) + eine gewünschte Reisedauer.
-- Die Preise sind Cache-Preise, keine garantiert buchbaren Live-Tarife.
-- Die API liefert keine Info, ob es sich um einen Direktflug handelt
-  (kein "nonStop"-Filter) - das Skript kennzeichnet das entsprechend.
+- depart_date/return_date wirken als Monatsfilter, nicht als exaktes
+  Datum - das Skript filtert clientseitig auf die gewünschte Reisedauer.
+- Die Preise sind Cache-Preise (siehe "expires_at"), keine garantiert
+  buchbaren Live-Tarife.
+- Der Preis gilt pro Person (nicht für 2 Personen) - im Skript wird das
+  entsprechend markiert.
 
 Benötigt eine Umgebungsvariable:
   TRAVELPAYOUTS_TOKEN
@@ -26,26 +33,31 @@ Schreibt/erweitert eine CSV-Datei unter data/preise.csv.
 import os
 import csv
 import sys
-from datetime import date
+from datetime import date, datetime
 import requests
 
-API_URL = "https://api.travelpayouts.com/v2/prices/latest"
+API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
 ORIGIN = "FRA"
 DESTINATION = "HND"
 CURRENCY = "eur"
-TRIP_DURATION_MIN = 20
-TRIP_DURATION_MAX = 26
+STAY_DAYS_TARGET = 23
+STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
 
-# Monate, für die wir Preise abfragen (Hinflug in diesem Monat)
-MONTHS_TO_CHECK = ["2027-02-01", "2027-03-01"]
+# Monatskombinationen: (Abflugmonat, Rückflugmonat)
+MONTH_COMBINATIONS = [
+    ("2027-02", "2027-02"),
+    ("2027-02", "2027-03"),
+    ("2027-03", "2027-03"),
+    ("2027-03", "2027-04"),
+]
 
-# Sanity-Check: naher Zeitraum, um zu bestätigen, dass die API-Anbindung
-# grundsätzlich funktioniert (dort sollten eher Cache-Daten vorhanden sein).
-# Kann später wieder entfernt werden, sobald die Anbindung bestätigt ist.
-SANITY_CHECK_MONTH = "2026-09-01"
-if SANITY_CHECK_MONTH not in MONTHS_TO_CHECK:
-    MONTHS_TO_CHECK = [SANITY_CHECK_MONTH] + MONTHS_TO_CHECK
+# Sanity-Check: naher Zeitraum + bekanntermaßen gut gecachte Route,
+# um die API-Anbindung zu bestätigen. Wird NICHT in die Haupt-CSV-Zeilen
+# gemischt, sondern separat markiert.
+SANITY_CHECK_ORIGIN = "FRA"
+SANITY_CHECK_DESTINATION = "BKK"
+SANITY_CHECK_MONTH = ("2026-09", "2026-09")
 
 
 def get_token():
@@ -56,31 +68,39 @@ def get_token():
     return token
 
 
-def search_prices(token, beginning_of_period, restrict_duration=True):
+def search_prices(token, origin, destination, depart_month, return_month):
     params = {
-        "origin": ORIGIN,
-        "destination": DESTINATION,
+        "origin": origin,
+        "destination": destination,
+        "depart_date": depart_month,
+        "return_date": return_month,
         "currency": CURRENCY,
-        "period_type": "month",
-        "beginning_of_period": beginning_of_period,
-        "one_way": "false",
-        "sorting": "price",
-        "limit": 30,
-        "page": 1,
     }
-    if restrict_duration:
-        params["trip_duration_min"] = TRIP_DURATION_MIN
-        params["trip_duration_max"] = TRIP_DURATION_MAX
-    headers = {"X-Access-Token": token}
+    headers = {"x-access-token": token}
     resp = requests.get(API_URL, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
-        print(f"  Warnung: {resp.status_code} für {beginning_of_period}: {resp.text[:200]}")
-        return []
+        print(f"  Warnung: HTTP {resp.status_code} für {depart_month}->{return_month}: {resp.text[:200]}")
+        return {}
     payload = resp.json()
     if not payload.get("success", True):
         print(f"  API meldet Fehler: {payload}")
-        return []
-    return payload.get("data", [])
+        return {}
+    # Struktur: data -> { "HND": { "0": {...}, "1": {...} } }
+    return payload.get("data", {}).get(destination, {})
+
+
+def stops_label(stop_key):
+    mapping = {"0": "Direktflug", "1": "1 Zwischenstopp", "2": "2 Zwischenstopps"}
+    return mapping.get(stop_key, f"{stop_key} Zwischenstopps")
+
+
+def trip_duration_days(eintrag):
+    try:
+        dep = datetime.fromisoformat(eintrag["departure_at"].replace("Z", "+00:00"))
+        ret = datetime.fromisoformat(eintrag["return_at"].replace("Z", "+00:00"))
+        return (ret - dep).days
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 def ensure_csv_header():
@@ -96,7 +116,8 @@ def ensure_csv_header():
                     "reisedauer_tage",
                     "preis_pro_person_eur",
                     "airline",
-                    "anzahl_zwischenstopps",
+                    "verbindung",
+                    "gueltig_bis",
                     "hinweis",
                 ]
             )
@@ -106,22 +127,10 @@ def diagnose_api(token):
     """Reiner Diagnose-Test mit einer garantiert vielgesuchten Route,
     um zu prüfen, ob die API grundsätzlich Daten liefert.
     Schreibt NICHTS in die CSV, nur Log-Ausgabe."""
-    print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, kein Filter ---")
-    params = {
-        "origin": "FRA",
-        "destination": "BKK",
-        "currency": CURRENCY,
-        "period_type": "month",
-        "beginning_of_period": "2026-09-01",
-        "one_way": "false",
-        "sorting": "price",
-        "limit": 5,
-        "page": 1,
-    }
-    headers = {"X-Access-Token": token}
-    resp = requests.get(API_URL, params=params, headers=headers, timeout=30)
-    print(f"  HTTP Status: {resp.status_code}")
-    print(f"  Antwort (erste 500 Zeichen): {resp.text[:500]}")
+    print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, /v1/prices/cheap ---")
+    dep_m, ret_m = SANITY_CHECK_MONTH
+    daten = search_prices(token, SANITY_CHECK_ORIGIN, SANITY_CHECK_DESTINATION, dep_m, ret_m)
+    print(f"  Rohdaten: {daten}")
     print("--- ENDE DIAGNOSE-TEST ---\n")
 
 
@@ -132,36 +141,34 @@ def main():
     heute = date.today().isoformat()
 
     zeilen = []
-    for monat in MONTHS_TO_CHECK:
-        ist_sanity_check = monat == SANITY_CHECK_MONTH
-        label = " (SANITY-CHECK, kein Dauer-Filter)" if ist_sanity_check else ""
-        print(f"Suche Preise für Hinflüge ab {monat}{label} ...")
-        treffer = search_prices(token, monat, restrict_duration=not ist_sanity_check)
-        if not treffer:
+    for depart_month, return_month in MONTH_COMBINATIONS:
+        print(f"Suche Preise: Hinflug {depart_month}, Rückflug {return_month} ...")
+        daten = search_prices(token, ORIGIN, DESTINATION, depart_month, return_month)
+        if not daten:
             print("  Keine Treffer (evtl. noch keine Cache-Daten für diesen Zeitraum).")
             continue
-        hinweis = (
-            "SANITY-CHECK: bestätigt nur, dass die API-Anbindung funktioniert"
-            if ist_sanity_check
-            else "Cache-Preis, Economy, Direktflug nicht garantiert"
-        )
-        for eintrag in treffer:
+        for stop_key, eintrag in daten.items():
+            dauer = trip_duration_days(eintrag)
+            if dauer is not None and abs(dauer - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
+                print(f"  Übersprungen: Reisedauer {dauer} Tage weicht zu stark von {STAY_DAYS_TARGET} Tagen ab.")
+                continue
             zeilen.append(
                 [
                     heute,
-                    eintrag.get("depart_date", ""),
-                    eintrag.get("return_date", ""),
-                    eintrag.get("duration", ""),
-                    eintrag.get("value", ""),
-                    eintrag.get("gate", ""),
-                    eintrag.get("number_of_changes", ""),
-                    hinweis,
+                    eintrag.get("departure_at", ""),
+                    eintrag.get("return_at", ""),
+                    dauer if dauer is not None else "",
+                    eintrag.get("price", ""),
+                    eintrag.get("airline", ""),
+                    stops_label(stop_key),
+                    eintrag.get("expires_at", ""),
+                    "Preis pro Person, Cache-Preis (kein Live-Tarif)",
                 ]
             )
             print(
-                f"  {eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
-                f"{eintrag.get('value')} EUR (pro Person, Cache-Preis, "
-                f"{eintrag.get('number_of_changes', '?')} Zwischenstopp(s))"
+                f"  {eintrag.get('departure_at')} -> {eintrag.get('return_at')} "
+                f"({dauer} Tage): {eintrag.get('price')} {CURRENCY.upper()} pro Person, "
+                f"{eintrag.get('airline')}, {stops_label(stop_key)}"
             )
 
     if zeilen:
