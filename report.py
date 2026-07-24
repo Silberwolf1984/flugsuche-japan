@@ -29,6 +29,7 @@ def print_flight(
     print(f"🏷️  Airline      : {flight.airline}")
     print(f"💶 Preis         : {flight.price} €")
 
+    # Preisänderung zur letzten Suche
     if old_price is not None:
         diff = flight.price - old_price
 
@@ -39,16 +40,17 @@ def print_flight(
         else:
             print("➡️ Änderung      : unverändert")
 
+    # Historischer Bestpreis
     if best is not None:
-
         if flight.price < best:
             print("🥇 Neuer Bestpreis!")
 
         elif flight.price == best:
-            print("🥇 Aktueller Bestpreis")
+            print(f"🥇 Aktueller Bestpreis ({best} €)")
 
         else:
-            print(f"🏆 Bestpreis     : {best} €")
+            diff = flight.price - best
+            print(f"🏆 Bestpreis     : {best} € (+{diff} €)")
 
     print(f"📅 Hinflug       : {flight.departure:%d.%m.%Y}")
     print(f"📅 Rückflug      : {flight.return_date:%d.%m.%Y}")
@@ -76,13 +78,14 @@ def print_summary(flights: list[Flight]) -> None:
 
     print_header()
 
-    for flight in flights:
-        old = last_price(flight.origin)
-        best = best_price(flight.origin)
+    # Nur einmal aus der CSV lesen
+    old_price = last_price()
+    best = best_price()
 
+    for flight:
         print_flight(
             flight,
-            old_price=old,
+            old_price=old_price,
             best=best,
         )
 
