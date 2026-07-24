@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write  # damit der Workflow die CSV zurück ins Repo committen darf
 
+concurrency:
+  group: flugsuche-push
+  cancel-in-progress: false
+
 jobs:
   suche:
     runs-on: ubuntu-latest
@@ -35,4 +39,5 @@ jobs:
           git config user.email "actions@github.com"
           git add data/preise.csv
           git diff --quiet --cached || git commit -m "Preise vom $(date +'%Y-%m-%d')"
+          git pull --rebase origin main
           git push
