@@ -42,7 +42,18 @@ def main() -> int:
         key=flight_sort_key,
         reverse=True,
     )
+    #
+    # Nur den besten Flug je Abflughafen behalten
+    #
+    best_flights = []
+    seen_origins = set()
 
+    for flight in flights:
+        if flight.origin not in seen_origins:
+            best_flights.append(flight)
+            seen_origins.add(flight.origin)
+
+    flights = best_flights
     #
     # Ausgabe
     #
