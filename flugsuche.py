@@ -85,17 +85,11 @@ def search_prices(token, origin, destination, depart_month, return_month):
     if not payload.get("success", True):
         print(f"  API meldet Fehler: {payload}")
         return {}
-
     data = payload.get("data", {})
     if not data:
         return {}
-
-    # Travelpayouts normalisiert Tokio auf den City-Code TYO,
-    # auch wenn HND oder NRT angefragt wurden.
     if destination in data:
         return data[destination]
-
-    # Fallback: ersten vorhandenen Eintrag verwenden.
     return next(iter(data.values()))
 
 
@@ -120,8 +114,7 @@ def ensure_csv_header():
     if not os.path.exists(CSV_PATH):
         with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                [
+            writer.writerow([
                     "abfrage_datum",
                     "abflughafen",
                     "zielflughafen",
@@ -130,11 +123,10 @@ def ensure_csv_header():
                     "reisedauer_tage",
                     "preis_pro_person_eur",
                     "airline",
-                    "verbindung",
+                    "anzahl_zwischenstopps",
                     "gueltig_bis",
                     "hinweis",
-                ]
-            )
+                ])
 
 
 def diagnose_api(token):
@@ -164,6 +156,10 @@ def main():
                 continue
 
             for stop_key, eintrag in daten.items():
+                if stop_key != "0":
+                    print(f"  Übersprungen: {stops_label(stop_key)}")
+                    continue
+
                 dauer = trip_duration_days(eintrag)
                 if dauer is not None and abs(dauer - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
                     print(f"  Übersprungen: Reisedauer {dauer} Tage weicht zu stark von {STAY_DAYS_TARGET} Tagen ab.")
