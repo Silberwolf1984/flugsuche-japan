@@ -37,12 +37,20 @@ from datetime import date, datetime
 import requests
 
 API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
+BUSINESS_API_URL = "https://api.travelpayouts.com/v2/prices/latest"
 ORIGIN = "FRA"
 DESTINATION = "HND"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
 STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
 CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "preise.csv")
+
+# Business Class: eigener, optionaler Suchdurchlauf. Nutzt zwangsläufig
+# "/v2/prices/latest" (einziger Endpunkt mit trip_class-Parameter), der
+# nur Preise aus Nutzersuchen der letzten 48 Stunden zeigt - bei Business
+# Class + Nischenroute ist die Trefferwahrscheinlichkeit gering, schadet
+# aber nicht, es trotzdem regelmäßig zu versuchen.
+BUSINESS_MONTHS = ["2027-02-01", "2027-03-01"]
 
 # Monatskombinationen: (Abflugmonat, Rückflugmonat)
 MONTH_COMBINATIONS = [
@@ -101,6 +109,31 @@ def trip_duration_days(eintrag):
         return (ret - dep).days
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def search_business_prices(token, beginning_of_period):
+    params = {
+        "origin": ORIGIN,
+        "destination": DESTINATION,
+        "currency": CURRENCY,
+        "period_type": "month",
+        "beginning_of_period": beginning_of_period,
+        "trip_class": 1,  # 1 = Business Class
+        "one_way": "false",
+        "sorting": "price",
+        "limit": 30,
+        "page": 1,
+    }
+    headers = {"x-access-token": token}
+    resp = requests.get(BUSINESS_API_URL, params=params, headers=headers, timeout=30)
+    if resp.status_code != 200:
+        print(f"  Warnung: HTTP {resp.status_code} für {beginning_of_period}: {resp.text[:200]}")
+        return []
+    payload = resp.json()
+    if not payload.get("success", True):
+        print(f"  API meldet Fehler: {payload}")
+        return []
+    return payload.get("data", [])
 
 
 def ensure_csv_header():
@@ -169,6 +202,34 @@ def main():
                 f"  {eintrag.get('departure_at')} -> {eintrag.get('return_at')} "
                 f"({dauer} Tage): {eintrag.get('price')} {CURRENCY.upper()} pro Person, "
                 f"{eintrag.get('airline')}, {stops_label(stop_key)}"
+            )
+
+    # --- Zusätzlicher, optionaler Durchlauf: Business Class ---
+    # Eigener Endpunkt mit anderem Cache-Verhalten (nur letzte 48h),
+    # daher bewusst getrennt von der Economy-Hauptsuche oben.
+    for monat in BUSINESS_MONTHS:
+        print(f"Suche Business-Class-Preise für Hinflüge ab {monat} ...")
+        treffer = search_business_prices(token, monat)
+        if not treffer:
+            print("  Keine Treffer (Business Class + Nischenroute -> selten Cache-Daten vorhanden).")
+            continue
+        for eintrag in treffer:
+            zeilen.append(
+                [
+                    heute,
+                    eintrag.get("depart_date", ""),
+                    eintrag.get("return_date", ""),
+                    eintrag.get("duration", ""),
+                    eintrag.get("value", ""),
+                    eintrag.get("gate", ""),
+                    "Business Class",
+                    "",
+                    "BUSINESS CLASS - Cache nur letzte 48h, Direktflug nicht garantiert",
+                ]
+            )
+            print(
+                f"  BUSINESS CLASS: {eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
+                f"{eintrag.get('value')} {CURRENCY.upper()} pro Person ({eintrag.get('gate')})"
             )
 
     if zeilen:
