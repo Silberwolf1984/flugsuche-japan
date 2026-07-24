@@ -38,11 +38,7 @@ import requests
 
 API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
 BUSINESS_API_URL = "https://api.travelpayouts.com/v2/prices/latest"
-ORIGINS = [
-    "FRA",  # Frankfurt
-    "MUC",  # München
-    "DUS",  # Düsseldorf
-]
+ORIGINS = ["FRA", "MUC", "DUS"]
 DESTINATION = "HND"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
@@ -67,7 +63,7 @@ MONTH_COMBINATIONS = [
 # Sanity-Check: naher Zeitraum + bekanntermaßen gut gecachte Route,
 # um die API-Anbindung zu bestätigen. Wird NICHT in die Haupt-CSV-Zeilen
 # gemischt, sondern separat markiert.
-SANITY_CHECK_ORIGIN = "FRA"
+SANITY_CHECK_ORIGINS = ["FRA", "MUC", "DUS"]
 SANITY_CHECK_DESTINATION = "BKK"
 SANITY_CHECK_MONTH = ("2026-09", "2026-09")
 
@@ -115,9 +111,9 @@ def trip_duration_days(eintrag):
         return None
 
 
-def search_business_prices(token, beginning_of_period):
+def search_business_prices(token, origin, beginning_of_period):
     params = {
-        "origin": ORIGIN,
+        "origin": origin,
         "destination": DESTINATION,
         "currency": CURRENCY,
         "period_type": "month",
@@ -148,6 +144,8 @@ def ensure_csv_header():
             writer.writerow(
                 [
                     "abfrage_datum",
+                    "abflughafen",
+                    "zielflughafen",
                     "hinflug",
                     "rueckflug",
                     "reisedauer_tage",
@@ -178,20 +176,26 @@ def main():
     heute = date.today().isoformat()
 
     zeilen = []
-    for depart_month, return_month in MONTH_COMBINATIONS:
-        print(f"Suche Preise: Hinflug {depart_month}, Rückflug {return_month} ...")
-        daten = search_prices(token, ORIGIN, DESTINATION, depart_month, return_month)
-        if not daten:
-            print("  Keine Treffer (evtl. noch keine Cache-Daten für diesen Zeitraum).")
-            continue
-        for stop_key, eintrag in daten.items():
-            dauer = trip_duration_days(eintrag)
-            if dauer is not None and abs(dauer - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
-                print(f"  Übersprungen: Reisedauer {dauer} Tage weicht zu stark von {STAY_DAYS_TARGET} Tagen ab.")
+    for origin in ORIGINS:
+        print(f"
+===== {origin} -> {DESTINATION} =====")
+        for depart_month, return_month in MONTH_COMBINATIONS:
+            print(f"Suche Preise: Hinflug {depart_month}, Rückflug {return_month} ...")
+            daten = search_prices(token, origin, DESTINATION, depart_month, return_month)
+            if not daten:
+                print("  Keine Treffer (evtl. noch keine Cache-Daten für diesen Zeitraum).")
                 continue
-            zeilen.append(
-                [
+
+            for stop_key, eintrag in daten.items():
+                dauer = trip_duration_days(eintrag)
+                if dauer is not None and abs(dauer - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
+                    print(f"  Übersprungen: Reisedauer {dauer} Tage weicht zu stark von {STAY_DAYS_TARGET} Tagen ab.")
+                    continue
+
+                zeilen.append([
                     heute,
+                    origin,
+                    DESTINATION,
                     eintrag.get("departure_at", ""),
                     eintrag.get("return_at", ""),
                     dauer if dauer is not None else "",
@@ -200,20 +204,22 @@ def main():
                     stops_label(stop_key),
                     eintrag.get("expires_at", ""),
                     "Preis pro Person, Cache-Preis (kein Live-Tarif)",
-                ]
-            )
-            print(
-                f"  {eintrag.get('departure_at')} -> {eintrag.get('return_at')} "
-                f"({dauer} Tage): {eintrag.get('price')} {CURRENCY.upper()} pro Person, "
-                f"{eintrag.get('airline')}, {stops_label(stop_key)}"
-            )
+                ])
+
+                print(
+                    f"  {origin}: {eintrag.get('departure_at')} -> {eintrag.get('return_at')} "
+                    f"({dauer} Tage): {eintrag.get('price')} {CURRENCY.upper()} pro Person, "
+                    f"{eintrag.get('airline')}, {stops_label(stop_key)}"
+                )
 
     # --- Zusätzlicher, optionaler Durchlauf: Business Class ---
+
     # Eigener Endpunkt mit anderem Cache-Verhalten (nur letzte 48h),
     # daher bewusst getrennt von der Economy-Hauptsuche oben.
-    for monat in BUSINESS_MONTHS:
+    for origin in ORIGINS:
+        for monat in BUSINESS_MONTHS:
         print(f"Suche Business-Class-Preise für Hinflüge ab {monat} ...")
-        treffer = search_business_prices(token, monat)
+        treffer = search_business_prices(token, origin, monat)
         if not treffer:
             print("  Keine Treffer (Business Class + Nischenroute -> selten Cache-Daten vorhanden).")
             continue
@@ -221,6 +227,8 @@ def main():
             zeilen.append(
                 [
                     heute,
+                    origin,
+                    DESTINATION,
                     eintrag.get("depart_date", ""),
                     eintrag.get("return_date", ""),
                     eintrag.get("duration", ""),
