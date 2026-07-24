@@ -1,10 +1,9 @@
 """
-report.py
-
 Ausgabe der gefundenen Flüge.
 """
 
 from models import Flight
+from csv_store import last_price
 
 
 def print_header() -> None:
@@ -17,7 +16,7 @@ def print_header() -> None:
     print()
 
 
-def print_flight(flight: Flight) -> None:
+def print_flight(flight: Flight, old_price: int | None = None) -> None:
     """
     Gibt einen einzelnen Flug formatiert aus.
     """
@@ -25,6 +24,17 @@ def print_flight(flight: Flight) -> None:
     print(f"✈️  {flight.origin} → {flight.destination}")
     print(f"🏷️  Airline      : {flight.airline}")
     print(f"💶 Preis         : {flight.price} €")
+
+    if old_price is not None:
+        diff = flight.price - old_price
+
+        if diff < 0:
+            print(f"📉 Änderung      : {abs(diff)} € günstiger")
+        elif diff > 0:
+            print(f"📈 Änderung      : {diff} € teurer")
+        else:
+            print("➡️ Änderung      : unverändert")
+
     print(f"📅 Hinflug       : {flight.departure:%d.%m.%Y}")
     print(f"📅 Rückflug      : {flight.return_date:%d.%m.%Y}")
     print(f"🛏️ Aufenthalt    : {flight.duration} Tage")
@@ -52,7 +62,8 @@ def print_summary(flights: list[Flight]) -> None:
     print_header()
 
     for flight in flights:
-        print_flight(flight)
+        old_price = last_price(flight.origin)
+        print_flight(flight, old_price)
 
     print()
     print(f"✅ Insgesamt {len(flights)} passende Flüge gefunden.")
