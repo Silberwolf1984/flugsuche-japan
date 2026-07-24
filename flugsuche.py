@@ -129,14 +129,12 @@ def ensure_csv_header():
 
 def diagnose_api(token):
     """Reiner Diagnose-Test mit einer garantiert vielgesuchten Route."""
-    print("
---- DIAGNOSE-TEST: Frankfurt -> Bangkok, /v1/prices/cheap ---")
+    print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, /v1/prices/cheap ---")
     dep_m, ret_m = SANITY_CHECK_MONTH
     for origin in SANITY_CHECK_ORIGINS:
         daten = search_prices(token, origin, SANITY_CHECK_DESTINATION, dep_m, ret_m)
         print(f"  {origin} -> Rohdaten: {daten}")
-    print("--- ENDE DIAGNOSE-TEST ---
-")
+    print("--- ENDE DIAGNOSE-TEST ---\n")
 
 
 def main():
