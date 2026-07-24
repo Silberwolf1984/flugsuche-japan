@@ -3,7 +3,7 @@ Ausgabe der gefundenen Flüge.
 """
 
 from models import Flight
-from csv_store import last_price
+from csv_store import last_price, best_price
 
 
 def print_header() -> None:
@@ -16,7 +16,11 @@ def print_header() -> None:
     print()
 
 
-def print_flight(flight: Flight, old_price: int | None = None) -> None:
+def print_flight(
+    flight: Flight,
+    old_price: int | None = None,
+    best: int | None = None,
+) -> None:
     """
     Gibt einen einzelnen Flug formatiert aus.
     """
@@ -34,6 +38,17 @@ def print_flight(flight: Flight, old_price: int | None = None) -> None:
             print(f"📈 Änderung      : {diff} € teurer")
         else:
             print("➡️ Änderung      : unverändert")
+
+    if best is not None:
+
+        if flight.price < best:
+            print("🥇 Neuer Bestpreis!")
+
+        elif flight.price == best:
+            print("🥇 Aktueller Bestpreis")
+
+        else:
+            print(f"🏆 Bestpreis     : {best} €")
 
     print(f"📅 Hinflug       : {flight.departure:%d.%m.%Y}")
     print(f"📅 Rückflug      : {flight.return_date:%d.%m.%Y}")
@@ -62,8 +77,14 @@ def print_summary(flights: list[Flight]) -> None:
     print_header()
 
     for flight in flights:
-        old_price = last_price(flight.origin)
-        print_flight(flight, old_price)
+        old = last_price(flight.origin)
+        best = best_price(flight.origin)
+
+        print_flight(
+            flight,
+            old_price=old,
+            best=best,
+        )
 
     print()
     print(f"✅ Insgesamt {len(flights)} passende Flüge gefunden.")
