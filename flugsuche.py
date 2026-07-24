@@ -102,9 +102,33 @@ def ensure_csv_header():
             )
 
 
+def diagnose_api(token):
+    """Reiner Diagnose-Test mit einer garantiert vielgesuchten Route,
+    um zu prüfen, ob die API grundsätzlich Daten liefert.
+    Schreibt NICHTS in die CSV, nur Log-Ausgabe."""
+    print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, kein Filter ---")
+    params = {
+        "origin": "FRA",
+        "destination": "BKK",
+        "currency": CURRENCY,
+        "period_type": "month",
+        "beginning_of_period": "2026-09-01",
+        "one_way": "false",
+        "sorting": "price",
+        "limit": 5,
+        "page": 1,
+    }
+    headers = {"X-Access-Token": token}
+    resp = requests.get(API_URL, params=params, headers=headers, timeout=30)
+    print(f"  HTTP Status: {resp.status_code}")
+    print(f"  Antwort (erste 500 Zeichen): {resp.text[:500]}")
+    print("--- ENDE DIAGNOSE-TEST ---\n")
+
+
 def main():
     ensure_csv_header()
     token = get_token()
+    diagnose_api(token)
     heute = date.today().isoformat()
 
     zeilen = []
