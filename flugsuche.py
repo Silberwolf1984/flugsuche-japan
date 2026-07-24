@@ -38,7 +38,11 @@ import requests
 
 API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
 BUSINESS_API_URL = "https://api.travelpayouts.com/v2/prices/latest"
-ORIGIN = "FRA"
+ORIGINS = [
+    "FRA",  # Frankfurt
+    "MUC",  # München
+    "DUS",  # Düsseldorf
+]
 DESTINATION = "HND"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
