@@ -38,7 +38,7 @@ import requests
 
 API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
 ORIGINS = ["FRA", "MUC", "DUS"]
-DESTINATION = "HND"
+DESTINATION = "TYO"
 CURRENCY = "eur"
 STAY_DAYS_TARGET = 23
 STAY_DAYS_TOLERANCE = 4  # akzeptiere 19-27 Tage als "ca. 23 Tage"
@@ -85,8 +85,18 @@ def search_prices(token, origin, destination, depart_month, return_month):
     if not payload.get("success", True):
         print(f"  API meldet Fehler: {payload}")
         return {}
-    # Struktur: data -> { "HND": { "0": {...}, "1": {...} } }
-    return payload.get("data", {}).get(destination, {})
+
+    data = payload.get("data", {})
+    if not data:
+        return {}
+
+    # Travelpayouts normalisiert Tokio auf den City-Code TYO,
+    # auch wenn HND oder NRT angefragt wurden.
+    if destination in data:
+        return data[destination]
+
+    # Fallback: ersten vorhandenen Eintrag verwenden.
+    return next(iter(data.values()))
 
 
 def stops_label(stop_key):
