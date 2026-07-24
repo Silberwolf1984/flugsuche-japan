@@ -1,8 +1,9 @@
 """
-Zentrale Konfiguration für den Japan Flight Monitor.
+config.py
 
-Hier werden alle Einstellungen gepflegt, die sich im Laufe der Zeit
-ändern können, ohne dass Logik angepasst werden muss.
+Zentrale Konfiguration des Japan Flight Monitors.
+Hier befinden sich alle Einstellungen, die ohne Änderungen am Programmcode
+angepasst werden können.
 """
 
 # ---------------------------------------------------------------------
@@ -16,19 +17,21 @@ CURRENCY = "eur"
 # Reise
 # ---------------------------------------------------------------------
 
+# Abflughäfen
 ORIGINS = [
     "FRA",
     "MUC",
     "DUS",
 ]
 
+# Ziel
 DESTINATION = "TYO"
 
-# gewünschte Aufenthaltsdauer
+# Gewünschte Aufenthaltsdauer
 STAY_DAYS_TARGET = 23
 STAY_DAYS_TOLERANCE = 4
 
-# Suchmonate
+# Suchzeiträume
 MONTH_COMBINATIONS = [
     ("2027-02", "2027-02"),
     ("2027-02", "2027-03"),
@@ -37,41 +40,40 @@ MONTH_COMBINATIONS = [
 ]
 
 # ---------------------------------------------------------------------
-# Airlines
+# Airline-Ranking
 # ---------------------------------------------------------------------
 
-# Höhere Zahl = höhere Priorität.
+# Höherer Wert = höhere Priorität
 #
-# Reihenfolge:
-# ANA / JAL
-# Lufthansa
-# Finnair
-# KLM
-# Air France
-# Qatar
-# Emirates
-# Etihad
-# Turkish
+# Dieses Ranking wird vom Ranking-Modul verwendet.
+# Alle nicht aufgeführten Airlines erhalten automatisch Priorität 0.
 
 AIRLINE_PRIORITY = {
+
+    # Japan
     "NH": 100,   # ANA
     "JL": 100,   # Japan Airlines
 
+    # Deutschland
     "LH": 95,    # Lufthansa
 
+    # Europa
     "AY": 90,    # Finnair
-
     "KL": 85,    # KLM
     "AF": 84,    # Air France
 
+    # Naher Osten
     "QR": 83,    # Qatar Airways
     "EK": 82,    # Emirates
     "EY": 81,    # Etihad Airways
-
     "TK": 80,    # Turkish Airlines
 }
 
-# Airlines, die grundsätzlich ignoriert werden.
+# ---------------------------------------------------------------------
+# Airlines ausschließen
+# ---------------------------------------------------------------------
+
+# Diese Airlines werden grundsätzlich ignoriert.
 
 EXCLUDED_AIRLINES = {
     "CA",   # Air China
@@ -87,26 +89,14 @@ EXCLUDED_AIRLINES = {
     "ZH",   # Shenzhen Airlines
 }
 
-# Airlines, die wir grundsätzlich akzeptieren,
-# falls kein Direktflug vorhanden ist.
-
-PREFERRED_AIRLINES = set(AIRLINE_PRIORITY.keys())
-
 # ---------------------------------------------------------------------
-# Diagnose
+# Dateien
 # ---------------------------------------------------------------------
 
-# Testroute zur Überprüfung der API
+CSV_PATH = "flugpreise.csv"
 
-SANITY_CHECK_ORIGINS = [
-    "FRA",
-    "MUC",
-    "DUS",
-]
+# ---------------------------------------------------------------------
+# Debug
+# ---------------------------------------------------------------------
 
-SANITY_CHECK_DESTINATION = "BKK"
-
-SANITY_CHECK_MONTH = (
-    "2026-09",
-    "2026-09",
-)
+DEBUG = False
