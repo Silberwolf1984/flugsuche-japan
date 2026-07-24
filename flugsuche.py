@@ -164,8 +164,9 @@ def diagnose_api(token):
     Schreibt NICHTS in die CSV, nur Log-Ausgabe."""
     print("\n--- DIAGNOSE-TEST: Frankfurt -> Bangkok, /v1/prices/cheap ---")
     dep_m, ret_m = SANITY_CHECK_MONTH
-    daten = search_prices(token, SANITY_CHECK_ORIGIN, SANITY_CHECK_DESTINATION, dep_m, ret_m)
-    print(f"  Rohdaten: {daten}")
+    for origin in SANITY_CHECK_ORIGINS:
+        daten = search_prices(token, origin, SANITY_CHECK_DESTINATION, dep_m, ret_m)
+        print(f"  {origin} -> Rohdaten: {daten}")
     print("--- ENDE DIAGNOSE-TEST ---\n")
 
 
@@ -217,14 +218,14 @@ def main():
     # daher bewusst getrennt von der Economy-Hauptsuche oben.
     for origin in ORIGINS:
         for monat in BUSINESS_MONTHS:
-        print(f"Suche Business-Class-Preise für Hinflüge ab {monat} ...")
-        treffer = search_business_prices(token, origin, monat)
-        if not treffer:
-            print("  Keine Treffer (Business Class + Nischenroute -> selten Cache-Daten vorhanden).")
-            continue
-        for eintrag in treffer:
-            zeilen.append(
-                [
+            print(f"Suche Business-Class-Preise für Hinflüge ab {monat} ...")
+            treffer = search_business_prices(token, origin, monat)
+            if not treffer:
+                print("  Keine Treffer (Business Class + Nischenroute -> selten Cache-Daten vorhanden).")
+                continue
+
+            for eintrag in treffer:
+                zeilen.append([
                     heute,
                     origin,
                     DESTINATION,
@@ -236,12 +237,13 @@ def main():
                     "Business Class",
                     "",
                     "BUSINESS CLASS - Cache nur letzte 48h, Direktflug nicht garantiert",
-                ]
-            )
-            print(
-                f"  BUSINESS CLASS: {eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
-                f"{eintrag.get('value')} {CURRENCY.upper()} pro Person ({eintrag.get('gate')})"
-            )
+                ])
+
+                print(
+                    f"  BUSINESS CLASS {origin}: "
+                    f"{eintrag.get('depart_date')} -> {eintrag.get('return_date')}: "
+                    f"{eintrag.get('value')} {CURRENCY.upper()} pro Person ({eintrag.get('gate')})"
+                )
 
     if zeilen:
         with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
