@@ -28,7 +28,7 @@ ORIGINS = [
 DESTINATION = "TYO"
 
 # Gewünschte Aufenthaltsdauer
-STAY_DAYS_TARGET = 23
+STAY_DAYS_TARGET = 21
 STAY_DAYS_TOLERANCE = 3
 
 # Suchzeiträume
