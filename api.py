@@ -36,6 +36,10 @@ def search_prices(token: str) -> list[Flight]:
 
         for depart_month, return_month in MONTH_COMBINATIONS:
 
+            print()
+            print("=" * 70)
+            print(f"🔍 Suche {origin} | {depart_month} -> {return_month}")
+
             params = {
                 "origin": origin,
                 "destination": DESTINATION,
@@ -57,7 +61,7 @@ def search_prices(token: str) -> list[Flight]:
 
             except requests.RequestException as ex:
 
-                print(f"API-Fehler ({origin}): {ex}")
+                print(f"❌ API-Fehler ({origin}): {ex}")
                 continue
 
             payload = response.json()
@@ -65,7 +69,16 @@ def search_prices(token: str) -> list[Flight]:
             data = payload.get("data", {})
 
             if not isinstance(data, dict):
+                print("❌ API liefert kein gültiges Datenformat.")
                 continue
+
+            if not data:
+                print("❌ API liefert KEINE Flugdaten.")
+                continue
+
+            print(f"✅ API liefert {len(data)} Ziel(e).")
+
+            accepted = 0
 
             for destination in data.values():
 
@@ -76,7 +89,16 @@ def search_prices(token: str) -> list[Flight]:
 
                     airline = item.get("airline")
 
+                    print()
+                    print("-" * 60)
+                    print(
+                        f"Airline={airline} | "
+                        f"Preis={item.get('price')} € | "
+                        f"Stops={stop_key}"
+                    )
+
                     if airline in EXCLUDED_AIRLINES:
+                        print(f"❌ Verworfen: Airline {airline} ausgeschlossen.")
                         continue
 
                     try:
@@ -89,20 +111,37 @@ def search_prices(token: str) -> list[Flight]:
                             item["return_at"].replace("Z", "+00:00")
                         )
 
-                    except Exception:
+                    except Exception as ex:
+                        print(f"❌ Datumsfehler: {ex}")
                         continue
 
                     duration = (return_date - departure).days
 
+                    print(
+                        f"Reise: {departure.date()} -> "
+                        f"{return_date.date()} "
+                        f"({duration} Tage)"
+                    )
+
                     if abs(duration - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
+                        print(
+                            f"❌ Verworfen: "
+                            f"Aufenthalt {duration} Tage "
+                            f"(Ziel {STAY_DAYS_TARGET}±{STAY_DAYS_TOLERANCE})"
+                        )
                         continue
 
                     try:
                         price = int(item["price"])
                     except Exception:
+                        print("❌ Preis konnte nicht gelesen werden.")
                         continue
 
                     link = item.get("link", "")
+
+                    print("✅ Flug akzeptiert.")
+
+                    accepted += 1
 
                     flights.append(
 
@@ -127,5 +166,17 @@ def search_prices(token: str) -> list[Flight]:
                         )
 
                     )
+
+            print()
+            print(
+                f"➡️ Ergebnis für {origin} "
+                f"{depart_month}->{return_month}: "
+                f"{accepted} akzeptierte Flüge"
+            )
+
+    print()
+    print("=" * 70)
+    print(f"GESAMT: {len(flights)} akzeptierte Flüge")
+    print("=" * 70)
 
     return flights
