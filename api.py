@@ -17,6 +17,7 @@ from config import (
     STAY_DAYS_TARGET,
     STAY_DAYS_TOLERANCE,
     EXCLUDED_AIRLINES,
+    DEBUG,
 )
 from models import Flight
 
@@ -48,7 +49,6 @@ def _request_with_retry(headers: dict, params: dict) -> dict | None:
             last_error = str(ex)
             print(f"⚠️ Netzwerkfehler ({origin}, Versuch {attempt}/{MAX_RETRIES}): {ex}")
         else:
-            # Rate-Limit oder Serverfehler -> es lohnt sich, es erneut zu versuchen
             if response.status_code == 429 or response.status_code >= 500:
                 last_error = f"HTTP {response.status_code}"
                 print(f"⚠️ {last_error} ({origin}, Versuch {attempt}/{MAX_RETRIES})")
@@ -56,7 +56,6 @@ def _request_with_retry(headers: dict, params: dict) -> dict | None:
                 try:
                     response.raise_for_status()
                 except requests.RequestException as ex:
-                    # Dauerhafter Fehler (z.B. 400/401/403) -> kein erneuter Versuch
                     print(f"❌ API-Fehler ({origin}): {ex}")
                     return None
 
@@ -83,6 +82,16 @@ def search_prices(token: str) -> list[Flight]:
         "x-access-token": token
     }
 
+    # Statistik zur Diagnose, warum ggf. keine Flüge übrig bleiben
+    stats = {
+        "anfragen": 0,
+        "rohtreffer": 0,
+        "verworfen_airline": 0,
+        "verworfen_dauer": 0,
+        "verworfen_preis": 0,
+        "uebernommen": 0,
+    }
+
     for origin in ORIGINS:
         for depart_month, return_month in MONTH_COMBINATIONS:
             params = {
@@ -93,21 +102,32 @@ def search_prices(token: str) -> list[Flight]:
                 "currency": CURRENCY,
             }
 
+            stats["anfragen"] += 1
             payload = _request_with_retry(headers, params)
             if payload is None:
                 continue
 
             data = payload.get("data", {})
             if not isinstance(data, dict):
+                if DEBUG:
+                    print(f"🐛 {origin} {depart_month}->{return_month}: keine 'data' im Payload")
                 continue
+
+            if DEBUG and not data:
+                print(f"🐛 {origin} {depart_month}->{return_month}: 'data' ist leer (API hat nichts gefunden)")
 
             for destination in data.values():
                 if not isinstance(destination, dict):
                     continue
 
                 for stop_key, item in destination.items():
+                    stats["rohtreffer"] += 1
                     airline = item.get("airline")
+
                     if airline in EXCLUDED_AIRLINES:
+                        stats["verworfen_airline"] += 1
+                        if DEBUG:
+                            print(f"🐛 {origin} {depart_month}->{return_month}: Airline {airline} ausgeschlossen")
                         continue
 
                     try:
@@ -122,11 +142,21 @@ def search_prices(token: str) -> list[Flight]:
 
                     duration = (return_date - departure).days
                     if abs(duration - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
+                        stats["verworfen_dauer"] += 1
+                        if DEBUG:
+                            print(
+                                f"🐛 {origin} {depart_month}->{return_month}: "
+                                f"{airline} gefunden, aber Aufenthalt {duration} Tage "
+                                f"(erlaubt: {STAY_DAYS_TARGET - STAY_DAYS_TOLERANCE}"
+                                f"-{STAY_DAYS_TARGET + STAY_DAYS_TOLERANCE}), "
+                                f"Preis {item.get('price')} {CURRENCY}"
+                            )
                         continue
 
                     try:
                         price = int(item["price"])
                     except Exception:
+                        stats["verworfen_preis"] += 1
                         continue
 
                     link = item.get("link", "")
@@ -143,5 +173,15 @@ def search_prices(token: str) -> list[Flight]:
                             link=link,
                         )
                     )
+                    stats["uebernommen"] += 1
+
+    print(
+        f"📊 Suche abgeschlossen: {stats['anfragen']} Anfragen, "
+        f"{stats['rohtreffer']} Rohtreffer, "
+        f"{stats['verworfen_airline']} wegen Airline verworfen, "
+        f"{stats['verworfen_dauer']} wegen Aufenthaltsdauer verworfen, "
+        f"{stats['verworfen_preis']} wegen ungültigem Preis verworfen, "
+        f"{stats['uebernommen']} übernommen."
+    )
 
     return flights

@@ -1,7 +1,7 @@
 """
 config.py
-
 Zentrale Konfiguration des Japan Flight Monitors.
+
 Hier befinden sich alle Einstellungen, die ohne Änderungen am Programmcode
 angepasst werden können.
 """
@@ -28,15 +28,24 @@ ORIGINS = [
 DESTINATION = "TYO"
 
 # Gewünschte Aufenthaltsdauer
+# Hinweis: /v1/prices/cheap liefert pro Monatskombination nur den EINEN
+# günstigsten Fund zurück (nicht alle verfügbaren Datumskombinationen).
+# Eine zu enge Toleranz führt daher schnell dazu, dass nichts übrig
+# bleibt, auch wenn die API grundsätzlich Preise gefunden hat.
 STAY_DAYS_TARGET = 21
-STAY_DAYS_TOLERANCE = 3
+STAY_DAYS_TOLERANCE = 6
 
 # Suchzeiträume
+# Mehr Monatskombinationen erhöhen die Chance, dass der jeweils
+# günstigste Fund pro Kombination zufällig in die gewünschte
+# Aufenthaltsdauer passt.
 MONTH_COMBINATIONS = [
     ("2027-02", "2027-02"),
     ("2027-02", "2027-03"),
+    ("2027-02", "2027-04"),
     ("2027-03", "2027-03"),
     ("2027-03", "2027-04"),
+    ("2027-04", "2027-04"),
 ]
 
 # ---------------------------------------------------------------------
@@ -47,26 +56,21 @@ MONTH_COMBINATIONS = [
 #
 # Dieses Ranking wird vom Ranking-Modul verwendet.
 # Alle nicht aufgeführten Airlines erhalten automatisch Priorität 0.
-
 AIRLINE_PRIORITY = {
-
     # Japan
-    "NH": 100,   # ANA
-    "JL": 100,   # Japan Airlines
-
+    "NH": 100,  # ANA
+    "JL": 100,  # Japan Airlines
     # Deutschland
-    "LH": 95,    # Lufthansa
-
+    "LH": 95,  # Lufthansa
     # Europa
-    "AY": 90,    # Finnair
-    "KL": 85,    # KLM
-    "AF": 84,    # Air France
-
+    "AY": 90,  # Finnair
+    "KL": 85,  # KLM
+    "AF": 84,  # Air France
     # Naher Osten
-    "QR": 83,    # Qatar Airways
-    "EK": 82,    # Emirates
-    "EY": 81,    # Etihad Airways
-    "TK": 80,    # Turkish Airlines
+    "QR": 83,  # Qatar Airways
+    "EK": 82,  # Emirates
+    "EY": 81,  # Etihad Airways
+    "TK": 80,  # Turkish Airlines
 }
 
 # ---------------------------------------------------------------------
@@ -74,19 +78,18 @@ AIRLINE_PRIORITY = {
 # ---------------------------------------------------------------------
 
 # Diese Airlines werden grundsätzlich ignoriert.
-
 EXCLUDED_AIRLINES = {
-    "CA",   # Air China
-    "CZ",   # China Southern
-    "MU",   # China Eastern
-    "MF",   # XiamenAir
-    "HU",   # Hainan Airlines
-    "3U",   # Sichuan Airlines
-    "9C",   # Spring Airlines
-    "HO",   # Juneyao Airlines
-    "GS",   # Tianjin Airlines
-    "SC",   # Shandong Airlines
-    "ZH",   # Shenzhen Airlines
+    "CA",  # Air China
+    "CZ",  # China Southern
+    "MU",  # China Eastern
+    "MF",  # XiamenAir
+    "HU",  # Hainan Airlines
+    "3U",  # Sichuan Airlines
+    "9C",  # Spring Airlines
+    "HO",  # Juneyao Airlines
+    "GS",  # Tianjin Airlines
+    "SC",  # Shandong Airlines
+    "ZH",  # Shenzhen Airlines
 }
 
 # ---------------------------------------------------------------------
@@ -99,4 +102,7 @@ CSV_PATH = "flugpreise.csv"
 # Debug
 # ---------------------------------------------------------------------
 
-DEBUG = False
+# Bei True gibt api.py detailliert aus, welche Flüge gefunden und aus
+# welchem Grund sie verworfen wurden. Nach der Fehlersuche wieder auf
+# False stellen, um die Actions-Logs übersichtlich zu halten.
+DEBUG = True
