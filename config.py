@@ -10,7 +10,12 @@ angepasst werden können.
 # API
 # ---------------------------------------------------------------------
 
-API_URL = "https://api.travelpayouts.com/v1/prices/cheap"
+# Preiskalender-Endpunkt: liefert den Preis für JEDEN Tag eines Monats,
+# gefiltert auf eine feste Aufenthaltsdauer (Parameter "length").
+# Damit entfällt das Problem, dass der alte /v1/prices/cheap-Endpunkt
+# nur den einen absolut günstigsten Fund pro Monat lieferte, der so
+# gut wie nie zur gewünschten Aufenthaltsdauer passte.
+CALENDAR_API_URL = "https://api.travelpayouts.com/v1/prices/calendar"
 CURRENCY = "eur"
 
 # ---------------------------------------------------------------------
@@ -27,25 +32,20 @@ ORIGINS = [
 # Ziel
 DESTINATION = "TYO"
 
-# Gewünschte Aufenthaltsdauer
-# Hinweis: /v1/prices/cheap liefert pro Monatskombination nur den EINEN
-# günstigsten Fund zurück (nicht alle verfügbaren Datumskombinationen).
-# Eine zu enge Toleranz führt daher schnell dazu, dass nichts übrig
-# bleibt, auch wenn die API grundsätzlich Preise gefunden hat.
+# Gewünschte Aufenthaltsdauer (wird der API direkt als "length"
+# mitgegeben -> die Ergebnisse haben bereits exakt diese Dauer).
 STAY_DAYS_TARGET = 21
-STAY_DAYS_TOLERANCE = 6
 
-# Suchzeiträume
-# Mehr Monatskombinationen erhöhen die Chance, dass der jeweils
-# günstigste Fund pro Kombination zufällig in die gewünschte
-# Aufenthaltsdauer passt.
-MONTH_COMBINATIONS = [
-    ("2027-02", "2027-02"),
-    ("2027-02", "2027-03"),
-    ("2027-02", "2027-04"),
-    ("2027-03", "2027-03"),
-    ("2027-03", "2027-04"),
-    ("2027-04", "2027-04"),
+# Kleine Sicherheitsmarge für den nachträglichen Plausibilitäts-Check
+# in api.py (falls die API doch mal minimal abweicht).
+DURATION_SAFETY_MARGIN_DAYS = 1
+
+# Monate, für die der Kalender abgefragt wird (jeweils der komplette
+# Monat, Format YYYY-MM).
+SEARCH_MONTHS = [
+    "2027-02",
+    "2027-03",
+    "2027-04",
 ]
 
 # ---------------------------------------------------------------------

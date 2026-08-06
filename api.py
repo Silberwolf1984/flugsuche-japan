@@ -1,6 +1,6 @@
 """
 api.py
-Kommunikation mit der TravelPayouts API.
+Kommunikation mit der TravelPayouts API (Preiskalender).
 """
 
 import time
@@ -9,13 +9,13 @@ from datetime import datetime
 import requests
 
 from config import (
-    API_URL,
+    CALENDAR_API_URL,
     CURRENCY,
     DESTINATION,
-    MONTH_COMBINATIONS,
+    SEARCH_MONTHS,
     ORIGINS,
     STAY_DAYS_TARGET,
-    STAY_DAYS_TOLERANCE,
+    DURATION_SAFETY_MARGIN_DAYS,
     EXCLUDED_AIRLINES,
     DEBUG,
 )
@@ -40,7 +40,7 @@ def _request_with_retry(headers: dict, params: dict) -> dict | None:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = requests.get(
-                API_URL,
+                CALENDAR_API_URL,
                 headers=headers,
                 params=params,
                 timeout=30,
@@ -75,7 +75,12 @@ def _request_with_retry(headers: dict, params: dict) -> dict | None:
 
 def search_prices(token: str) -> list[Flight]:
     """
-    Sucht Flüge und liefert eine Liste von Flight-Objekten.
+    Sucht Flüge über den Preiskalender-Endpunkt und liefert eine Liste
+    von Flight-Objekten.
+
+    Der Kalender wird pro Origin und pro Monat abgefragt und liefert
+    den günstigsten Preis für JEDEN Tag des Monats, jeweils für einen
+    Aufenthalt von exakt STAY_DAYS_TARGET Tagen.
     """
     flights: list[Flight] = []
     headers = {
@@ -93,12 +98,13 @@ def search_prices(token: str) -> list[Flight]:
     }
 
     for origin in ORIGINS:
-        for depart_month, return_month in MONTH_COMBINATIONS:
+        for month in SEARCH_MONTHS:
             params = {
                 "origin": origin,
                 "destination": DESTINATION,
-                "depart_date": depart_month,
-                "return_date": return_month,
+                "depart_date": month,
+                "calendar_type": "departure_date",
+                "length": STAY_DAYS_TARGET,
                 "currency": CURRENCY,
             }
 
@@ -110,70 +116,72 @@ def search_prices(token: str) -> list[Flight]:
             data = payload.get("data", {})
             if not isinstance(data, dict):
                 if DEBUG:
-                    print(f"🐛 {origin} {depart_month}->{return_month}: keine 'data' im Payload")
+                    print(f"🐛 {origin} {month}: keine 'data' im Payload")
                 continue
 
             if DEBUG and not data:
-                print(f"🐛 {origin} {depart_month}->{return_month}: 'data' ist leer (API hat nichts gefunden)")
+                print(f"🐛 {origin} {month}: 'data' ist leer (API hat für diesen Monat nichts gefunden)")
 
-            for destination in data.values():
-                if not isinstance(destination, dict):
+            # data ist hier ein dict: {"2027-02-01": {...}, "2027-02-02": {...}, ...}
+            for date_key, item in data.items():
+                if not isinstance(item, dict):
                     continue
 
-                for stop_key, item in destination.items():
-                    stats["rohtreffer"] += 1
-                    airline = item.get("airline")
+                stats["rohtreffer"] += 1
+                airline = item.get("airline")
 
-                    if airline in EXCLUDED_AIRLINES:
-                        stats["verworfen_airline"] += 1
-                        if DEBUG:
-                            print(f"🐛 {origin} {depart_month}->{return_month}: Airline {airline} ausgeschlossen")
-                        continue
+                if airline in EXCLUDED_AIRLINES:
+                    stats["verworfen_airline"] += 1
+                    if DEBUG:
+                        print(f"🐛 {origin} {month} ({date_key}): Airline {airline} ausgeschlossen")
+                    continue
 
-                    try:
-                        departure = datetime.fromisoformat(
-                            item["departure_at"].replace("Z", "+00:00")
-                        )
-                        return_date = datetime.fromisoformat(
-                            item["return_at"].replace("Z", "+00:00")
-                        )
-                    except Exception:
-                        continue
-
-                    duration = (return_date - departure).days
-                    if abs(duration - STAY_DAYS_TARGET) > STAY_DAYS_TOLERANCE:
-                        stats["verworfen_dauer"] += 1
-                        if DEBUG:
-                            print(
-                                f"🐛 {origin} {depart_month}->{return_month}: "
-                                f"{airline} gefunden, aber Aufenthalt {duration} Tage "
-                                f"(erlaubt: {STAY_DAYS_TARGET - STAY_DAYS_TOLERANCE}"
-                                f"-{STAY_DAYS_TARGET + STAY_DAYS_TOLERANCE}), "
-                                f"Preis {item.get('price')} {CURRENCY}"
-                            )
-                        continue
-
-                    try:
-                        price = int(item["price"])
-                    except Exception:
-                        stats["verworfen_preis"] += 1
-                        continue
-
-                    link = item.get("link", "")
-
-                    flights.append(
-                        Flight(
-                            origin=origin,
-                            destination=DESTINATION,
-                            airline=airline,
-                            departure=departure,
-                            return_date=return_date,
-                            price=price,
-                            stops=int(stop_key),
-                            link=link,
-                        )
+                try:
+                    departure = datetime.fromisoformat(
+                        item["departure_at"].replace("Z", "+00:00")
                     )
-                    stats["uebernommen"] += 1
+                    return_date = datetime.fromisoformat(
+                        item["return_at"].replace("Z", "+00:00")
+                    )
+                except Exception:
+                    continue
+
+                # Plausibilitäts-Check: sollte durch "length" schon exakt
+                # STAY_DAYS_TARGET sein, kleine Marge für Rundungsfälle.
+                duration = (return_date - departure).days
+                if abs(duration - STAY_DAYS_TARGET) > DURATION_SAFETY_MARGIN_DAYS:
+                    stats["verworfen_dauer"] += 1
+                    if DEBUG:
+                        print(
+                            f"🐛 {origin} {month} ({date_key}): "
+                            f"{airline} gefunden, aber Aufenthalt {duration} Tage "
+                            f"(erwartet: {STAY_DAYS_TARGET} ±{DURATION_SAFETY_MARGIN_DAYS}), "
+                            f"Preis {item.get('price')} {CURRENCY}"
+                        )
+                    continue
+
+                try:
+                    price = int(item["price"])
+                except Exception:
+                    stats["verworfen_preis"] += 1
+                    continue
+
+                stops = item.get("transfers", 0)
+                link = item.get("link", "")
+
+                flights.append(
+                    Flight(
+                        origin=origin,
+                        destination=DESTINATION,
+                        airline=airline,
+                        departure=departure,
+                        return_date=return_date,
+                        price=price,
+                        stops=int(stops),
+                        link=link,
+                    )
+                )
+                stats["uebernommen"] += 1
 
     print(
         f"📊 Suche abgeschlossen: {stats['anfragen']} Anfragen, "
