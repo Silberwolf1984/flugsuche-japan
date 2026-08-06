@@ -1,6 +1,5 @@
 """
 flugsuche.py
-
 Hauptprogramm des Japan Flight Monitors.
 """
 
@@ -17,7 +16,6 @@ def main() -> int:
     """
     Einstiegspunkt des Programms.
     """
-
     token = (
         os.getenv("TRAVELPAYOUTS_TOKEN")
         or os.getenv("TP_API_TOKEN")
@@ -28,7 +26,6 @@ def main() -> int:
         return 1
 
     print("🔍 Suche nach Flügen...")
-
     flights = search_prices(token)
 
     if not flights:
@@ -42,30 +39,35 @@ def main() -> int:
         key=flight_sort_key,
         reverse=True,
     )
+
     #
     # Nur den besten Flug je Abflughafen behalten
     #
     best_flights = []
     seen_origins = set()
-
     for flight in flights:
         if flight.origin not in seen_origins:
             best_flights.append(flight)
             seen_origins.add(flight.origin)
-
     flights = best_flights
+
     #
     # Ausgabe
     #
     print_summary(flights)
 
     #
-    # CSV speichern
+    # CSV speichern (nur bei tatsächlichen Änderungen)
     #
+    saved = 0
     for flight in flights:
-        append_flight(flight)
+        if append_flight(flight):
+            saved += 1
 
-    print("💾 Flüge wurden gespeichert.")
+    if saved:
+        print(f"💾 {saved} neue/geänderte Flugpreis(e) wurden gespeichert.")
+    else:
+        print("ℹ️ Keine Preisänderungen seit dem letzten Lauf – nichts gespeichert.")
 
     return 0
 
