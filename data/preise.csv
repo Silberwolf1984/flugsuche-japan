@@ -42,3 +42,5 @@ abfrage_datum,hinflug,rueckflug,reisedauer_tage,preis_pro_person_eur,airline,anz
 2026-08-25 06:39:59,MUC,2027-07-15,2027-08-05,20,913,EK,1,1 Zwischenstopp(e)
 2026-08-26 06:41:26,FRA,2027-01-18,2027-02-08,20,864,EY,1,1 Zwischenstopp(e)
 2026-08-26 06:41:26,MUC,2026-10-24,2026-11-14,20,1030,PC,2,2 Zwischenstopp(e)
+2026-08-27 17:16:58,FRA,2027-01-18,2027-02-08,20,864,EY,1,1 Zwischenstopp(e)
+2026-08-27 17:16:58,MUC,2026-10-24,2026-11-14,20,1030,PC,2,2 Zwischenstopp(e)
